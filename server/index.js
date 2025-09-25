@@ -9,23 +9,24 @@ const Link = require('./models/Link');
 const Click = require('./models/Click');
 
 const app = express();
+
+// Security & Middleware
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
-// simple rate limiter
+// Simple rate limiter: max 60 requests per minute per IP
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 60 // limit each IP to 60 requests per minute
+  max: 60
 });
 app.use(limiter);
 
-// Connect MongoDB
-mongoose.connect(process.env.MONGO_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => console.log('MongoDB connected'))
-  .catch(err => { console.error('MongoDB connection error', err); process.exit(1); });
+// MongoDB connection (no deprecated options)
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
 app.use('/api', linksRouter);
@@ -37,12 +38,12 @@ app.get('/:code', async (req, res) => {
     const link = await Link.findOne({ shortCode: code });
     if (!link) return res.status(404).send('Not found');
 
-    // check expiry
+    // Check expiry
     if (link.expiresAt && new Date() > link.expiresAt) {
       return res.status(410).send('Link expired');
     }
 
-    // record click & increment counter
+    // Record click & increment counter
     link.clickCount = (link.clickCount || 0) + 1;
     await link.save();
 
@@ -54,7 +55,7 @@ app.get('/:code', async (req, res) => {
     });
     await click.save();
 
-    // redirect
+    // Redirect to original URL
     return res.redirect(link.originalUrl);
   } catch (err) {
     console.error(err);
